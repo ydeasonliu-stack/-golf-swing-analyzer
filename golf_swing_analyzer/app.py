@@ -173,31 +173,48 @@ def main():
         
         # Display video and results outside tmpdir context
         if 'video_data' in st.session_state:
-            st.header("📹 分析视频")
-            if st.session_state.video_data:
-                st.video(st.session_state.video_data)
-            else:
-                # Fallback: Display frames as slideshow
-                st.info("使用帧播放模式（自动播放）")
-                frame_placeholder = st.empty()
-                speed = st.slider("播放速度", 0.5, 2.0, 1.0)
-                auto_play = st.checkbox("自动播放", value=True)
-                
-                if auto_play:
-                    import time
-                    for idx, frame in enumerate(st.session_state.output_frames):
-                        frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), width=600)
-                        time.sleep(1.0 / (fps * speed))
+            col_video, col_info = st.columns([3, 1])
+            
+            with col_video:
+                st.header("📹 分析视频")
+                if st.session_state.video_data:
+                    st.video(st.session_state.video_data, start_time=0)
                 else:
-                    frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0)
-                    frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), width=600)
+                    # Fallback: Display frames as slideshow
+                    st.info("使用帧播放模式（自动播放）")
+                    frame_placeholder = st.empty()
+                    
+                    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+                    with col_ctrl1:
+                        speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed_slider")
+                    with col_ctrl2:
+                        auto_play = st.checkbox("自动播放", value=True, key="auto_play_cb")
+                    with col_ctrl3:
+                        if not auto_play:
+                            frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="frame_slider")
+                    
+                    if auto_play:
+                        import time
+                        for idx, frame in enumerate(st.session_state.output_frames):
+                            frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
+                            time.sleep(1.0 / (fps * speed))
+                    else:
+                        frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_column_width=True)
+            
+            with col_info:
+                st.subheader("📊 统计数据")
+                st.metric("总帧数", len(st.session_state.output_frames))
+                outside_count = sum(st.session_state.head_outside_frames)
+                st.metric("越界帧数", outside_count)
+                pct = (outside_count / len(st.session_state.output_frames) * 100) if st.session_state.output_frames else 0
+                st.metric("越界率", f"{pct:.1f}%")
             
             # Frame slider (optional)
             st.header("🔍 逐帧查看")
-            frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0)
-            col1, col2 = st.columns(2)
+            frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="detail_frame_slider")
+            col1, col2 = st.columns([2, 1])
             with col1:
-                st.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), width=300)
+                st.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_column_width=True)
             with col2:
                 status = "❌ 头部越界" if st.session_state.head_outside_frames[frame_idx] else "✅ 头部在圆圈内"
                 st.write(f"**第 {frame_idx + 1} 帧**\n{status}")
