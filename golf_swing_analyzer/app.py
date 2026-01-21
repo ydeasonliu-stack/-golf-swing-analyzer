@@ -21,11 +21,17 @@ def main():
         head_circle_radius = st.slider("Head Circle Radius", 30, 150, 60)
     
     # Upload
-    uploaded_file = st.file_uploader("上传视频", type=["mp4", "avi", "mov", "mkv"])
+    uploaded_file = st.file_uploader(
+        "上传视频",
+        type=["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "m4v"],
+        accept_multiple_files=False
+    )
     
     if uploaded_file:
         with tempfile.TemporaryDirectory() as tmpdir:
-            video_path = os.path.join(tmpdir, "input.mp4")
+            # 保留原始文件扩展名
+            file_ext = uploaded_file.name.split('.')[-1].lower()
+            video_path = os.path.join(tmpdir, f"input.{file_ext}")
             with open(video_path, 'wb') as f:
                 f.write(uploaded_file.read())
             
