@@ -7,6 +7,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import tempfile
+import imageio
 from golf_swing_analyzer.visualizer import process_video_frame
 
 
@@ -143,20 +144,16 @@ def main():
                     pct = (outside_count / len(output_frames) * 100) if output_frames else 0
                     st.metric("越界百分比", f"{pct:.1f}%")
                 
-                # Save and play video - write to persistent temp file
+                # Save and play video using imageio (better compatibility)
                 output_path = os.path.join(tmpdir, "output.mp4")
                 try:
-                    # Use MJPEG codec for better compatibility
-                    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-                    if not out.isOpened():
-                        raise ValueError("VideoWriter failed to open")
-                    
+                    # Use imageio with libx264 codec
+                    writer = imageio.get_writer(output_path, fps=fps, codec='libx264', pixelformat='yuv420p')
                     for frame in output_frames:
-                        success = out.write(frame)
-                        if not success:
-                            st.warning("⚠️ 部分帧写入失败")
-                    out.release()
+                        # Convert BGR to RGB for imageio
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        writer.append_data(frame_rgb)
+                    writer.close()
                     
                     # Read video before tmpdir cleanup
                     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -167,8 +164,8 @@ def main():
                         st.error("❌ 视频文件创建失败或为空")
                         return
                 except Exception as e:
-                    st.error(f"❌ 视频编码错误: {e}")
-                    return
+                    st.warning(f"⚠️ 视频编码遇到问题: {e}，将改用帧播放模式")
+                    st.session_state.video_data = None
                 
                 # Store outputs
                 st.session_state.output_frames = output_frames
@@ -177,7 +174,23 @@ def main():
         # Display video and results outside tmpdir context
         if 'video_data' in st.session_state:
             st.header("📹 分析视频")
-            st.video(st.session_state.video_data)
+            if st.session_state.video_data:
+                st.video(st.session_state.video_data)
+            else:
+                # Fallback: Display frames as slideshow
+                st.info("使用帧播放模式（自动播放）")
+                frame_placeholder = st.empty()
+                speed = st.slider("播放速度", 0.5, 2.0, 1.0)
+                auto_play = st.checkbox("自动播放", value=True)
+                
+                if auto_play:
+                    import time
+                    for idx, frame in enumerate(st.session_state.output_frames):
+                        frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), width=600)
+                        time.sleep(1.0 / (fps * speed))
+                else:
+                    frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0)
+                    frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), width=600)
             
             # Frame slider (optional)
             st.header("🔍 逐帧查看")
