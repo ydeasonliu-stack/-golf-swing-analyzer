@@ -16,6 +16,10 @@ def main():
     st.title("⛳ Golf Swing Head Movement Analyzer")
     st.markdown("标记首帧关键点 → 自动分析全视频 → 连续播放结果")
     
+    # Initialize session state
+    if 'current_upload' not in st.session_state:
+        st.session_state.current_upload = None
+    
     # Sidebar
     with st.sidebar:
         st.header("⚙️ Settings")
@@ -23,6 +27,14 @@ def main():
     
     # Upload
     uploaded_file = st.file_uploader("上传视频", type=["mp4", "avi", "mov", "mkv"])
+    
+    # Check if new file uploaded (different from current)
+    if uploaded_file and uploaded_file.name != st.session_state.current_upload:
+        # Clear old session state
+        for key in ['video_data', 'output_frames', 'head_outside_frames']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.session_state.current_upload = uploaded_file.name
     
     if uploaded_file:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -184,14 +196,11 @@ def main():
                     st.info("使用帧播放模式（自动播放）")
                     frame_placeholder = st.empty()
                     
-                    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+                    col_ctrl1, col_ctrl2 = st.columns(2)
                     with col_ctrl1:
                         speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed_slider")
                     with col_ctrl2:
                         auto_play = st.checkbox("自动播放", value=True, key="auto_play_cb")
-                    with col_ctrl3:
-                        if not auto_play:
-                            frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="frame_slider")
                     
                     if auto_play:
                         import time
@@ -199,6 +208,7 @@ def main():
                             frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                             time.sleep(1.0 / (fps * speed))
                     else:
+                        frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="frame_slider")
                         frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
             
             with col_info:
