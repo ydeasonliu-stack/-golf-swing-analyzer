@@ -10,15 +10,12 @@ import tempfile
 import time
 from golf_swing_analyzer.visualizer import process_video_frame
 
-# Initialize session state
-if 'playing' not in st.session_state:
-    st.session_state.playing = False
-if 'frame_index' not in st.session_state:
-    st.session_state.frame_index = 0
-
-
 st.set_page_config(page_title="Golf Swing Analyzer", layout="wide")
 st.title("⛳ Golf Swing Head Movement Analyzer")
+
+# Initialize session state
+if 'analyzed' not in st.session_state:
+    st.session_state.analyzed = False
 
 # Sidebar
 with st.sidebar:
@@ -29,7 +26,6 @@ with st.sidebar:
 uploaded_file = st.file_uploader("上传视频", type=["mp4", "avi", "mov", "mkv"])
 
 if uploaded_file is None:
-    st.info("请上传一个视频文件")
     st.stop()
 
 # Save video temporarily
@@ -38,7 +34,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     with open(video_path, 'wb') as f:
         f.write(uploaded_file.read())
     
-    # Read video
+    # Read video info
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         st.error("❌ 无法打开视频")
@@ -86,13 +82,13 @@ with tempfile.TemporaryDirectory() as tmpdir:
     st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
     
     # Step 2: Analyze
-    if st.button("▶️ 开始分析"):
-        with st.spinner("处理中..."):
+    if st.button("▶️ 开始分析", use_container_width=True):
+        with st.spinner("分析中..."):
             cap = cv2.VideoCapture(video_path)
             output_frames = []
             head_outside_frames = []
             
-            head_initial = (int(head_x / 2), int(head_y / 2))  # Scale down coords
+            head_initial = (int(head_x / 2), int(head_y / 2))
             spine_line = ((int(shoulder_x / 2), int(shoulder_y / 2)), (int(hip_x / 2), int(hip_y / 2)))
             head_circle = (head_initial, head_circle_radius // 2)
             current_head_pos = head_initial
@@ -105,7 +101,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
                 if not ret:
                     break
                 
-                # Scale down frame by 2x (1/4 area)
+                # Scale down
                 frame = cv2.resize(frame, (width // 2, height // 2))
                 
                 # Track head
@@ -143,60 +139,55 @@ with tempfile.TemporaryDirectory() as tmpdir:
             
             cap.release()
         
-        # Store in session state for playback
+        # Save to session state
         st.session_state.output_frames = output_frames
         st.session_state.head_outside_frames = head_outside_frames
-        st.success("✅ 分析完成")
+        st.session_state.fps = fps
+        st.session_state.analyzed = True
         
-        # Step 3: Display results (only if analysis completed)
-        if 'output_frames' in st.session_state:
-            output_frames = st.session_state.output_frames
-            head_outside_frames = st.session_state.head_outside_frames
+        st.success("✅ 分析完成")
+        st.rerun()
+
+# Display results if analyzed
+if st.session_state.analyzed and 'output_frames' in st.session_state:
+    output_frames = st.session_state.output_frames
+    head_outside_frames = st.session_state.head_outside_frames
+    fps = st.session_state.fps
+    
+    # Metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("总帧数", len(output_frames))
+    with col2:
+        outside_count = sum(head_outside_frames)
+        st.metric("越界帧数", outside_count)
+    with col3:
+        pct = (outside_count / len(output_frames) * 100) if output_frames else 0
+        st.metric("越界百分比", f"{pct:.1f}%")
+    
+    # Playback
+    st.header("📹 分析视频 - 实时播放")
+    st.markdown("**红圈** = 头部越界 | **绿圈** = 头部在范围内 | **黄点** = 当前头部位置 | **绿线** = 脊椎线")
+    
+    speed = st.slider("播放速度", 0.5, 2.0, 1.0)
+    
+    if st.button("▶️ 播放视频", use_container_width=True):
+        frame_placeholder = st.empty()
+        status_placeholder = st.empty()
+        progress_placeholder = st.empty()
+        
+        for i in range(len(output_frames)):
+            # Update frame
+            frame_placeholder.image(cv2.cvtColor(output_frames[i], cv2.COLOR_BGR2RGB), use_container_width=True)
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("总帧数", len(output_frames))
-            with col2:
-                outside_count = sum(head_outside_frames)
-                st.metric("越界帧数", outside_count)
-            with col3:
-                pct = (outside_count / len(output_frames) * 100) if output_frames else 0
-                st.metric("越界百分比", f"{pct:.1f}%")
+            # Update status
+            status_text = "🔴 头部越界" if head_outside_frames[i] else "🟢 头部在范围内"
+            status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
             
-            # Slideshow with fixed annotations
-            st.header("📹 分析视频 - 实时播放")
-            st.markdown("**红圈** = 头部越界 | **绿圈** = 头部在范围内 | **黄点** = 当前头部位置 | **绿线** = 脊椎线")
+            # Update progress
+            progress_placeholder.progress((i + 1) / len(output_frames))
             
-            col_ctrl, col_speed = st.columns([2, 1])
-            with col_ctrl:
-                if st.button("▶️ 开始播放", key="play_btn", use_container_width=True):
-                    st.session_state.playing = True
-                    st.session_state.frame_index = 0
-            with col_speed:
-                speed = st.slider("速度", 0.5, 2.0, 1.0, key="speed")
-            
-            # Display frames
-            frame_placeholder = st.empty()
-            status_placeholder = st.empty()
-            progress_placeholder = st.empty()
-            
-            # If playing, show frames
-            if st.session_state.playing and 'output_frames' in st.session_state:
-                frames = st.session_state.output_frames
-                outside = st.session_state.head_outside_frames
-                
-                # Play all frames
-                for i in range(len(frames)):
-                    frame_placeholder.image(cv2.cvtColor(frames[i], cv2.COLOR_BGR2RGB), use_container_width=True)
-                    status_text = "🔴 头部越界" if outside[i] else "🟢 头部在范围内"
-                    status_placeholder.write(f"**第 {i + 1} / {len(frames)} 帧** - {status_text}")
-                    progress_placeholder.progress(min((i + 1) / len(frames), 1.0))
-                    time.sleep(1.0 / (fps * speed))
-                
-                st.success("✅ 播放完成！")
-                st.session_state.playing = False
-            elif not st.session_state.playing and 'output_frames' in st.session_state:
-                # Show first frame if not playing
-                frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[0], cv2.COLOR_BGR2RGB), use_container_width=True)
-                status_placeholder.write(f"**点击上方按钮开始播放**")
-                progress_placeholder.progress(0)
+            # Delay
+            time.sleep(1.0 / (fps * speed))
+        
+        st.success("✅ 播放完成！")
