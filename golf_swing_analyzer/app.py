@@ -157,28 +157,23 @@ with tempfile.TemporaryDirectory() as tmpdir:
                 st.metric("越界百分比", f"{pct:.1f}%")
             
             # Slideshow with fixed annotations
-            st.header("📹 分析视频")
-            st.markdown("圆圈和脊椎线为固定参考标注，红色圆圈表示头部已越界，绿色表示在范围内")
+            st.header("📹 分析视频 - 实时播放")
+            st.markdown("**红圈** = 头部越界 | **绿圈** = 头部在范围内 | **黄点** = 当前头部位置 | **绿线** = 脊椎线")
             
-            col_play, col_ctrl = st.columns([3, 1])
-            with col_ctrl:
-                speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed")
-                auto_play = st.checkbox("自动播放", value=True, key="auto")
+            speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed")
             
-            with col_play:
-                frame_placeholder = st.empty()
-                status_placeholder = st.empty()
-                
-                if not auto_play:
-                    frame_idx = st.slider("帧号", 0, len(output_frames) - 1, 0, key="manual_frame")
-                    frame_placeholder.image(cv2.cvtColor(output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
-                    status_text = "❌ 头部越界" if head_outside_frames[frame_idx] else "✅ 头部在范围内"
-                    status_placeholder.write(f"**第 {frame_idx + 1} 帧** - {status_text}")
-                else:
-                    # Auto play with delay
-                    import time
-                    for i, frame in enumerate(output_frames):
-                        frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        status_text = "❌ 头部越界" if head_outside_frames[i] else "✅ 头部在范围内"
-                        status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
-                        time.sleep(1.0 / (fps * speed))
+            play_btn = st.button("▶️ 开始播放", key="play_btn")
+            progress_bar = st.progress(0)
+            frame_placeholder = st.empty()
+            status_placeholder = st.empty()
+            
+            if play_btn:
+                import time
+                st.info("正在播放...")
+                for i, frame in enumerate(output_frames):
+                    frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    status_text = "🔴 头部越界" if head_outside_frames[i] else "🟢 头部在范围内"
+                    status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
+                    progress_bar.progress(min((i + 1) / len(output_frames), 1.0))
+                    time.sleep(1.0 / (fps * speed))
+                st.success("✅ 播放完成！")
