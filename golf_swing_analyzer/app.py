@@ -156,8 +156,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
                 pct = (outside_count / len(output_frames) * 100) if output_frames else 0
                 st.metric("越界百分比", f"{pct:.1f}%")
             
-            # Slideshow
+            # Slideshow with fixed annotations
             st.header("📹 分析视频")
+            st.markdown("圆圈和脊椎线为固定参考标注，红色圆圈表示头部已越界，绿色表示在范围内")
             
             col_play, col_ctrl = st.columns([3, 1])
             with col_ctrl:
@@ -175,14 +176,3 @@ with tempfile.TemporaryDirectory() as tmpdir:
                     for i, frame in enumerate(output_frames):
                         frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         st.session_state.current_frame = i
-            
-            # Frame inspection
-            st.header("🔍 逐帧查看")
-            inspect_idx = st.slider("选择帧", 0, len(output_frames) - 1, 0, key="inspect")
-            
-            col_frame, col_info = st.columns([2, 1])
-            with col_frame:
-                st.image(cv2.cvtColor(output_frames[inspect_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
-            with col_info:
-                status = "❌ 头部越界" if head_outside_frames[inspect_idx] else "✅ 头部在圆圈内"
-                st.write(f"**第 {inspect_idx + 1} 帧**\n{status}")
