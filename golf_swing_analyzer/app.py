@@ -51,7 +51,7 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                st.image(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB), width=350)
+                st.image(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
             
             with col2:
                 st.markdown("**输入坐标 (像素)**")
@@ -70,7 +70,7 @@ def main():
             cv2.line(preview, (int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)), (0, 255, 0), 2)
             
             st.markdown("**标记预览**")
-            st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), width=350)
+            st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
             
             if st.button("▶️ 开始分析全视频"):
                 # Process all frames
@@ -196,10 +196,10 @@ def main():
                     if auto_play:
                         import time
                         for idx, frame in enumerate(st.session_state.output_frames):
-                            frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
+                            frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                             time.sleep(1.0 / (fps * speed))
                     else:
-                        frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_column_width=True)
+                        frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
             
             with col_info:
                 st.subheader("📊 统计数据")
@@ -214,7 +214,7 @@ def main():
             frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="detail_frame_slider")
             col1, col2 = st.columns([2, 1])
             with col1:
-                st.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_column_width=True)
+                st.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
             with col2:
                 status = "❌ 头部越界" if st.session_state.head_outside_frames[frame_idx] else "✅ 头部在圆圈内"
                 st.write(f"**第 {frame_idx + 1} 帧**\n{status}")
