@@ -21,17 +21,11 @@ def main():
         head_circle_radius = st.slider("Head Circle Radius", 30, 150, 60)
     
     # Upload
-    uploaded_file = st.file_uploader(
-        "上传视频",
-        type=["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "m4v"],
-        accept_multiple_files=False
-    )
+    uploaded_file = st.file_uploader("上传视频", type=["mp4", "avi", "mov", "mkv"])
     
     if uploaded_file:
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 保留原始文件扩展名
-            file_ext = uploaded_file.name.split('.')[-1].lower()
-            video_path = os.path.join(tmpdir, f"input.{file_ext}")
+            video_path = os.path.join(tmpdir, "input.mp4")
             with open(video_path, 'wb') as f:
                 f.write(uploaded_file.read())
             
@@ -152,18 +146,11 @@ def main():
                 # Save and play video - write to persistent temp file
                 output_path = os.path.join(tmpdir, "output.mp4")
                 try:
-                    # Try multiple codecs (macOS compatibility)
-                    codecs = ['mp4v', 'avc1', 'DIVX', 'MJPG']
-                    out = None
-                    for codec_str in codecs:
-                        fourcc = cv2.VideoWriter_fourcc(*codec_str)
-                        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-                        if out.isOpened():
-                            break
-                        out = None
-                    
-                    if out is None or not out.isOpened():
-                        raise ValueError(f"无可用编码器 (尝试过: {', '.join(codecs)})")
+                    # Use MJPEG codec for better compatibility
+                    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                    if not out.isOpened():
+                        raise ValueError("VideoWriter failed to open")
                     
                     for frame in output_frames:
                         success = out.write(frame)
