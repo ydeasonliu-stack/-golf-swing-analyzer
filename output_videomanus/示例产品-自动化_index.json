@@ -1,0 +1,18 @@
+{
+  "product": "示例产品-自动化",
+  "generated": "2026-01-21T11:53:04.504964",
+  "outputs": {
+    "15": {
+      "text": "./output_videomanus/示例产品-自动化_15s.txt",
+      "meta": "./output_videomanus/示例产品-自动化_15s.txt.meta.json"
+    },
+    "30": {
+      "text": "./output_videomanus/示例产品-自动化_30s.txt",
+      "meta": "./output_videomanus/示例产品-自动化_30s.txt.meta.json"
+    },
+    "60": {
+      "text": "./output_videomanus/示例产品-自动化_60s.txt",
+      "meta": "./output_videomanus/示例产品-自动化_60s.txt.meta.json"
+    }
+  }
+}
