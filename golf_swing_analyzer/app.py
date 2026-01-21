@@ -85,9 +85,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
             output_frames = []
             head_outside_frames = []
             
-            head_initial = (int(head_x), int(head_y))
-            spine_line = ((int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)))
-            head_circle = (head_initial, head_circle_radius)
+            head_initial = (int(head_x / 2), int(head_y / 2))  # Scale down coords
+            spine_line = ((int(shoulder_x / 2), int(shoulder_y / 2)), (int(hip_x / 2), int(hip_y / 2)))
+            head_circle = (head_initial, head_circle_radius // 2)
             current_head_pos = head_initial
             
             progress = st.progress(0)
@@ -97,6 +97,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
                 ret, frame = cap.read()
                 if not ret:
                     break
+                
+                # Scale down frame by 2x (1/4 area)
+                frame = cv2.resize(frame, (width // 2, height // 2))
                 
                 # Track head
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -133,43 +136,53 @@ with tempfile.TemporaryDirectory() as tmpdir:
             
             cap.release()
         
-        # Step 3: Display results
+        # Store in session state for playback
+        st.session_state.output_frames = output_frames
+        st.session_state.head_outside_frames = head_outside_frames
         st.success("✅ 分析完成")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("总帧数", len(output_frames))
-        with col2:
-            outside_count = sum(head_outside_frames)
-            st.metric("越界帧数", outside_count)
-        with col3:
-            pct = (outside_count / len(output_frames) * 100) if output_frames else 0
-            st.metric("越界百分比", f"{pct:.1f}%")
-        
-        # Slideshow
-        st.header("📹 分析视频")
-        
-        speed = st.slider("播放速度", 0.5, 2.0, 1.0)
-        auto_play = st.checkbox("自动播放", value=True)
-        
-        frame_placeholder = st.empty()
-        
-        if auto_play:
-            import time
-            for frame in output_frames:
-                frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                time.sleep(1.0 / (fps * speed))
-        else:
-            frame_idx = st.slider("帧号", 0, len(output_frames) - 1, 0)
-            frame_placeholder.image(cv2.cvtColor(output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
-        
-        # Frame inspection
-        st.header("🔍 逐帧查看")
-        inspect_idx = st.slider("选择帧", 0, len(output_frames) - 1, 0)
-        
-        col_frame, col_info = st.columns([2, 1])
-        with col_frame:
-            st.image(cv2.cvtColor(output_frames[inspect_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
-        with col_info:
-            status = "❌ 头部越界" if head_outside_frames[inspect_idx] else "✅ 头部在圆圈内"
-            st.write(f"**第 {inspect_idx + 1} 帧**\n{status}")
+        # Step 3: Display results (only if analysis completed)
+        if 'output_frames' in st.session_state:
+            output_frames = st.session_state.output_frames
+            head_outside_frames = st.session_state.head_outside_frames
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("总帧数", len(output_frames))
+            with col2:
+                outside_count = sum(head_outside_frames)
+                st.metric("越界帧数", outside_count)
+            with col3:
+                pct = (outside_count / len(output_frames) * 100) if output_frames else 0
+                st.metric("越界百分比", f"{pct:.1f}%")
+            
+            # Slideshow
+            st.header("📹 分析视频")
+            
+            col_play, col_ctrl = st.columns([3, 1])
+            with col_ctrl:
+                speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed")
+                auto_play = st.checkbox("自动播放", value=True, key="auto")
+            
+            with col_play:
+                frame_placeholder = st.empty()
+                
+                if not auto_play:
+                    frame_idx = st.slider("帧号", 0, len(output_frames) - 1, 0, key="manual_frame")
+                    frame_placeholder.image(cv2.cvtColor(output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+                else:
+                    # Auto play
+                    for i, frame in enumerate(output_frames):
+                        frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        st.session_state.current_frame = i
+            
+            # Frame inspection
+            st.header("🔍 逐帧查看")
+            inspect_idx = st.slider("选择帧", 0, len(output_frames) - 1, 0, key="inspect")
+            
+            col_frame, col_info = st.columns([2, 1])
+            with col_frame:
+                st.image(cv2.cvtColor(output_frames[inspect_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+            with col_info:
+                status = "❌ 头部越界" if head_outside_frames[inspect_idx] else "✅ 头部在圆圈内"
+                st.write(f"**第 {inspect_idx + 1} 帧**\n{status}")
