@@ -16,6 +16,10 @@ st.title("⛳ Golf Swing Head Movement Analyzer")
 # Initialize session state
 if 'analyzed' not in st.session_state:
     st.session_state.analyzed = False
+if 'playing' not in st.session_state:
+    st.session_state.playing = False
+if 'current_frame' not in st.session_state:
+    st.session_state.current_frame = 0
 
 # Sidebar
 with st.sidebar:
@@ -169,25 +173,41 @@ if st.session_state.analyzed and 'output_frames' in st.session_state:
     st.header("📹 分析视频 - 实时播放")
     st.markdown("**红圈** = 头部越界 | **绿圈** = 头部在范围内 | **黄点** = 当前头部位置 | **绿线** = 脊椎线")
     
-    speed = st.slider("播放速度", 0.5, 2.0, 1.0)
+    col_speed, col_btn = st.columns([2, 1])
+    with col_speed:
+        speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="playback_speed")
+    with col_btn:
+        if st.button("▶️ 开始播放", use_container_width=True, key="play_btn"):
+            st.session_state.playing = True
+            st.session_state.current_frame = 0
     
-    if st.button("▶️ 播放视频", use_container_width=True):
-        frame_placeholder = st.empty()
-        status_placeholder = st.empty()
-        progress_placeholder = st.empty()
-        
+    # Create placeholders
+    frame_placeholder = st.empty()
+    info_placeholder = st.empty()
+    progress_placeholder = st.empty()
+    
+    # Play frames if playing flag is set
+    if st.session_state.playing:
         for i in range(len(output_frames)):
-            # Update frame
+            # Display frame
             frame_placeholder.image(cv2.cvtColor(output_frames[i], cv2.COLOR_BGR2RGB), use_container_width=True)
             
-            # Update status
+            # Display status
             status_text = "🔴 头部越界" if head_outside_frames[i] else "🟢 头部在范围内"
-            status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
+            info_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
             
-            # Update progress
+            # Display progress
             progress_placeholder.progress((i + 1) / len(output_frames))
             
-            # Delay
+            # Delay between frames
             time.sleep(1.0 / (fps * speed))
         
+        # After playback completes
+        st.session_state.playing = False
         st.success("✅ 播放完成！")
+    else:
+        # Show first frame as preview
+        if len(output_frames) > 0:
+            frame_placeholder.image(cv2.cvtColor(output_frames[0], cv2.COLOR_BGR2RGB), use_container_width=True)
+            info_placeholder.write("点击上方按钮开始播放视频")
+            progress_placeholder.progress(0)
