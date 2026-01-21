@@ -7,7 +7,14 @@ import streamlit as st
 import cv2
 import numpy as np
 import tempfile
+import time
 from golf_swing_analyzer.visualizer import process_video_frame
+
+# Initialize session state
+if 'playing' not in st.session_state:
+    st.session_state.playing = False
+if 'frame_index' not in st.session_state:
+    st.session_state.frame_index = 0
 
 
 st.set_page_config(page_title="Golf Swing Analyzer", layout="wide")
@@ -160,20 +167,36 @@ with tempfile.TemporaryDirectory() as tmpdir:
             st.header("📹 分析视频 - 实时播放")
             st.markdown("**红圈** = 头部越界 | **绿圈** = 头部在范围内 | **黄点** = 当前头部位置 | **绿线** = 脊椎线")
             
-            speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed")
+            col_ctrl, col_speed = st.columns([2, 1])
+            with col_ctrl:
+                if st.button("▶️ 开始播放", key="play_btn", use_container_width=True):
+                    st.session_state.playing = True
+                    st.session_state.frame_index = 0
+            with col_speed:
+                speed = st.slider("速度", 0.5, 2.0, 1.0, key="speed")
             
-            play_btn = st.button("▶️ 开始播放", key="play_btn")
-            progress_bar = st.progress(0)
+            # Display frames
             frame_placeholder = st.empty()
             status_placeholder = st.empty()
+            progress_placeholder = st.empty()
             
-            if play_btn:
-                import time
-                st.info("正在播放...")
-                for i, frame in enumerate(output_frames):
-                    frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                    status_text = "🔴 头部越界" if head_outside_frames[i] else "🟢 头部在范围内"
-                    status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
-                    progress_bar.progress(min((i + 1) / len(output_frames), 1.0))
+            # If playing, show frames
+            if st.session_state.playing and 'output_frames' in st.session_state:
+                frames = st.session_state.output_frames
+                outside = st.session_state.head_outside_frames
+                
+                # Play all frames
+                for i in range(len(frames)):
+                    frame_placeholder.image(cv2.cvtColor(frames[i], cv2.COLOR_BGR2RGB), use_container_width=True)
+                    status_text = "🔴 头部越界" if outside[i] else "🟢 头部在范围内"
+                    status_placeholder.write(f"**第 {i + 1} / {len(frames)} 帧** - {status_text}")
+                    progress_placeholder.progress(min((i + 1) / len(frames), 1.0))
                     time.sleep(1.0 / (fps * speed))
+                
                 st.success("✅ 播放完成！")
+                st.session_state.playing = False
+            elif not st.session_state.playing and 'output_frames' in st.session_state:
+                # Show first frame if not playing
+                frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[0], cv2.COLOR_BGR2RGB), use_container_width=True)
+                status_placeholder.write(f"**点击上方按钮开始播放**")
+                progress_placeholder.progress(0)
