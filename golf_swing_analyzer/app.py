@@ -167,12 +167,18 @@ with tempfile.TemporaryDirectory() as tmpdir:
             
             with col_play:
                 frame_placeholder = st.empty()
+                status_placeholder = st.empty()
                 
                 if not auto_play:
                     frame_idx = st.slider("帧号", 0, len(output_frames) - 1, 0, key="manual_frame")
                     frame_placeholder.image(cv2.cvtColor(output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+                    status_text = "❌ 头部越界" if head_outside_frames[frame_idx] else "✅ 头部在范围内"
+                    status_placeholder.write(f"**第 {frame_idx + 1} 帧** - {status_text}")
                 else:
-                    # Auto play
+                    # Auto play with delay
+                    import time
                     for i, frame in enumerate(output_frames):
                         frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        st.session_state.current_frame = i
+                        status_text = "❌ 头部越界" if head_outside_frames[i] else "✅ 头部在范围内"
+                        status_placeholder.write(f"**第 {i + 1} / {len(output_frames)} 帧** - {status_text}")
+                        time.sleep(1.0 / (fps * speed))
