@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import tempfile
 import imageio
+import time
 from golf_swing_analyzer.visualizer import process_video_frame
 
 
@@ -20,214 +21,189 @@ def main():
     if 'current_upload' not in st.session_state:
         st.session_state.current_upload = None
     
-    # Sidebar
+    # Sidebar settings
     with st.sidebar:
         st.header("⚙️ Settings")
         head_circle_radius = st.slider("Head Circle Radius", 30, 150, 60)
     
-    # Upload
+    # File upload
     uploaded_file = st.file_uploader("上传视频", type=["mp4", "avi", "mov", "mkv"])
     
-    # Check if new file uploaded (different from current)
-    if uploaded_file and uploaded_file.name != st.session_state.current_upload:
-        # Clear old session state
-        for key in ['video_data', 'output_frames', 'head_outside_frames']:
-            if key in st.session_state:
-                del st.session_state[key]
+    # Check if new file uploaded
+    if uploaded_file is None:
+        st.info("请上传一个视频文件")
+        return
+    
+    # Clear cache on new file
+    if uploaded_file.name != st.session_state.current_upload:
+        if 'video_data' in st.session_state:
+            del st.session_state['video_data']
+        if 'output_frames' in st.session_state:
+            del st.session_state['output_frames']
+        if 'head_outside_frames' in st.session_state:
+            del st.session_state['head_outside_frames']
         st.session_state.current_upload = uploaded_file.name
     
-    if uploaded_file:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            video_path = os.path.join(tmpdir, "input.mp4")
-            with open(video_path, 'wb') as f:
-                f.write(uploaded_file.read())
-            
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            st.info(f"📹 {width}x{height} @ {fps:.1f}fps, 共 {total_frames} 帧")
-            
-            # Get first frame
-            ret, first_frame = cap.read()
-            cap.release()
-            
-            if not ret:
-                st.error("Failed to read video")
-                return
-            
-            # Mark keypoints
-            st.header("第1步: 标记首帧关键点")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.image(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-            
-            with col2:
-                st.markdown("**输入坐标 (像素)**")
-                head_x = st.number_input("头部 X", 0, width, width//2)
-                head_y = st.number_input("头部 Y", 0, height, height//3)
-                shoulder_x = st.number_input("肩膀 X", 0, width, width//2)
-                shoulder_y = st.number_input("肩膀 Y", 0, height, height//2)
-                hip_x = st.number_input("臀部 X", 0, width, width//2)
-                hip_y = st.number_input("臀部 Y", 0, height, 2*height//3)
-            
-            # Preview
-            preview = first_frame.copy()
-            cv2.circle(preview, (int(head_x), int(head_y)), 12, (0, 255, 255), -1)
-            cv2.circle(preview, (int(shoulder_x), int(shoulder_y)), 8, (0, 255, 0), 2)
-            cv2.circle(preview, (int(hip_x), int(hip_y)), 8, (255, 0, 0), 2)
-            cv2.line(preview, (int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)), (0, 255, 0), 2)
-            
-            st.markdown("**标记预览**")
-            st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
-            
-            if st.button("▶️ 开始分析全视频"):
-                # Process all frames
-                with st.spinner("处理中..."):
-                    cap = cv2.VideoCapture(video_path)
-                    output_frames = []
-                    head_outside_frames = []
-                    
-                    head_initial = (int(head_x), int(head_y))
-                    spine_line = ((int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)))
-                    head_circle = (head_initial, head_circle_radius)
-                    current_head_pos = head_initial
-                    
-                    progress_bar = st.progress(0)
-                    frame_count = 0
-                    
-                    while True:
-                        ret, frame = cap.read()
-                        if not ret:
-                            break
-                        
-                        # Head tracking
-                        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                        lower = np.array([0, 20, 70])
-                        upper = np.array([20, 255, 255])
-                        mask = cv2.inRange(hsv, lower, upper)
-                        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-                        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-                        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-                        
-                        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                        if contours:
-                            valid = []
-                            for c in contours:
-                                x, y, w, h = cv2.boundingRect(c)
-                                cx, cy = x + w//2, y + h//2
-                                d = np.sqrt((cx - current_head_pos[0])**2 + (cy - current_head_pos[1])**2)
-                                if d < 200:
-                                    valid.append((d, (cx, cy)))
-                            if valid:
-                                current_head_pos = sorted(valid)[0][1]
-                        
-                        # Check outside
-                        circle_center, radius = head_circle
-                        dist = np.sqrt((current_head_pos[0] - circle_center[0])**2 + 
-                                     (current_head_pos[1] - circle_center[1])**2)
-                        head_outside = dist > radius
-                        head_outside_frames.append(head_outside)
-                        
-                        # Draw
-                        annotated = process_video_frame(frame, spine_line, head_circle, 
-                                                       current_head_pos, head_outside)
-                        output_frames.append(annotated)
-                        
-                        frame_count += 1
-                        progress_bar.progress(min(frame_count / total_frames, 1.0))
-                    
-                    cap.release()
-                    progress_bar.empty()
-                
-                # Results
-                st.success("✅ 分析完成")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("总帧数", len(output_frames))
-                with col2:
-                    outside_count = sum(head_outside_frames)
-                    st.metric("头部越界帧数", outside_count)
-                with col3:
-                    pct = (outside_count / len(output_frames) * 100) if output_frames else 0
-                    st.metric("越界百分比", f"{pct:.1f}%")
-                
-                # Save and play video using imageio (better compatibility)
-                output_path = os.path.join(tmpdir, "output.mp4")
-                try:
-                    # Use imageio with libx264 codec
-                    writer = imageio.get_writer(output_path, fps=fps, codec='libx264', pixelformat='yuv420p')
-                    for frame in output_frames:
-                        # Convert BGR to RGB for imageio
-                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        writer.append_data(frame_rgb)
-                    writer.close()
-                    
-                    # Read video before tmpdir cleanup
-                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                        with open(output_path, 'rb') as f:
-                            video_data = f.read()
-                        st.session_state.video_data = video_data
-                    else:
-                        st.error("❌ 视频文件创建失败或为空")
-                        return
-                except Exception as e:
-                    st.warning(f"⚠️ 视频编码遇到问题: {e}，将改用帧播放模式")
-                    st.session_state.video_data = None
-                
-                # Store outputs
-                st.session_state.output_frames = output_frames
-                st.session_state.head_outside_frames = head_outside_frames
+    # Save uploaded file temporarily
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, "input.mp4")
+        with open(input_path, 'wb') as f:
+            f.write(uploaded_file.read())
         
-        # Display video and results outside tmpdir context
-        if 'video_data' in st.session_state:
-            col_video, col_info = st.columns([3, 1])
-            
-            with col_video:
-                st.header("📹 分析视频")
-                if st.session_state.video_data:
-                    st.video(st.session_state.video_data, start_time=0)
-                else:
-                    # Fallback: Display frames as slideshow
-                    st.info("使用帧播放模式（自动播放）")
-                    frame_placeholder = st.empty()
+        # Read video info
+        cap = cv2.VideoCapture(input_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        st.info(f"📹 {width}x{height} @ {fps:.1f}fps, 共 {total_frames} 帧")
+        
+        # Get first frame
+        ret, first_frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            st.error("❌ 无法读取视频")
+            return
+        
+        # Mark keypoints
+        st.header("第1步: 标记首帧关键点")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.image(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+        
+        with col2:
+            st.markdown("**输入坐标 (像素)**")
+            head_x = st.number_input("头部 X", 0, width, width//2, key="head_x")
+            head_y = st.number_input("头部 Y", 0, height, height//3, key="head_y")
+            shoulder_x = st.number_input("肩膀 X", 0, width, width//2, key="shoulder_x")
+            shoulder_y = st.number_input("肩膀 Y", 0, height, height//2, key="shoulder_y")
+            hip_x = st.number_input("臀部 X", 0, width, width//2, key="hip_x")
+            hip_y = st.number_input("臀部 Y", 0, height, 2*height//3, key="hip_y")
+        
+        # Preview marks
+        preview = first_frame.copy()
+        cv2.circle(preview, (int(head_x), int(head_y)), 12, (0, 255, 255), -1)
+        cv2.circle(preview, (int(shoulder_x), int(shoulder_y)), 8, (0, 255, 0), 2)
+        cv2.circle(preview, (int(hip_x), int(hip_y)), 8, (255, 0, 0), 2)
+        cv2.line(preview, (int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)), (0, 255, 0), 2)
+        
+        st.markdown("**标记预览**")
+        st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+        
+        # Analysis button
+        if st.button("▶️ 开始分析全视频", key="analyze_btn"):
+            # Process all frames
+            with st.spinner("处理中..."):
+                cap = cv2.VideoCapture(input_path)
+                output_frames = []
+                head_outside_frames = []
+                
+                head_initial = (int(head_x), int(head_y))
+                spine_line = ((int(shoulder_x), int(shoulder_y)), (int(hip_x), int(hip_y)))
+                head_circle = (head_initial, head_circle_radius)
+                current_head_pos = head_initial
+                
+                progress_bar = st.progress(0)
+                
+                frame_idx = 0
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
                     
-                    col_ctrl1, col_ctrl2 = st.columns(2)
-                    with col_ctrl1:
-                        speed = st.slider("播放速度", 0.5, 2.0, 1.0, key="speed_slider")
-                    with col_ctrl2:
-                        auto_play = st.checkbox("自动播放", value=True, key="auto_play_cb")
+                    # Head tracking
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                    lower = np.array([0, 20, 70])
+                    upper = np.array([20, 255, 255])
+                    mask = cv2.inRange(hsv, lower, upper)
+                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+                    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+                    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
                     
-                    if auto_play:
-                        import time
-                        for idx, frame in enumerate(st.session_state.output_frames):
-                            frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                            time.sleep(1.0 / (fps * speed))
-                    else:
-                        frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="frame_slider")
-                        frame_placeholder.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+                    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    if contours:
+                        candidates = []
+                        for c in contours:
+                            x, y, w, h = cv2.boundingRect(c)
+                            cx, cy = x + w//2, y + h//2
+                            d = np.sqrt((cx - current_head_pos[0])**2 + (cy - current_head_pos[1])**2)
+                            if d < 200:
+                                candidates.append((d, (cx, cy)))
+                        if candidates:
+                            current_head_pos = sorted(candidates)[0][1]
+                    
+                    # Check if head outside circle
+                    dist = np.sqrt((current_head_pos[0] - head_circle[0][0])**2 + 
+                                 (current_head_pos[1] - head_circle[0][1])**2)
+                    head_outside = dist > head_circle[1]
+                    head_outside_frames.append(head_outside)
+                    
+                    # Draw annotations
+                    annotated = process_video_frame(frame, spine_line, head_circle, 
+                                                   current_head_pos, head_outside)
+                    output_frames.append(annotated)
+                    
+                    frame_idx += 1
+                    progress_bar.progress(min(frame_idx / total_frames, 1.0))
+                
+                cap.release()
+                progress_bar.empty()
             
-            with col_info:
-                st.subheader("📊 统计数据")
-                st.metric("总帧数", len(st.session_state.output_frames))
-                outside_count = sum(st.session_state.head_outside_frames)
-                st.metric("越界帧数", outside_count)
-                pct = (outside_count / len(st.session_state.output_frames) * 100) if st.session_state.output_frames else 0
-                st.metric("越界率", f"{pct:.1f}%")
+            # Store results
+            st.session_state.output_frames = output_frames
+            st.session_state.head_outside_frames = head_outside_frames
+            st.success("✅ 分析完成")
+        
+        # Display results if available
+        if 'output_frames' in st.session_state:
+            output_frames = st.session_state.output_frames
+            head_outside_frames = st.session_state.head_outside_frames
             
-            # Frame slider (optional)
-            st.header("🔍 逐帧查看")
-            frame_idx = st.slider("选择帧", 0, len(st.session_state.output_frames) - 1, 0, key="detail_frame_slider")
-            col1, col2 = st.columns([2, 1])
+            # Results metrics
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.image(cv2.cvtColor(st.session_state.output_frames[frame_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+                st.metric("总帧数", len(output_frames))
             with col2:
-                status = "❌ 头部越界" if st.session_state.head_outside_frames[frame_idx] else "✅ 头部在圆圈内"
-                st.write(f"**第 {frame_idx + 1} 帧**\n{status}")
+                outside_count = sum(head_outside_frames)
+                st.metric("越界帧数", outside_count)
+            with col3:
+                pct = (outside_count / len(output_frames) * 100) if output_frames else 0
+                st.metric("越界百分比", f"{pct:.1f}%")
+            
+            # Video playback section
+            st.header("📹 分析视频")
+            col_play, col_ctrl = st.columns([3, 1])
+            
+            with col_play:
+                # Slideshow
+                frame_display = st.empty()
+                
+                with col_ctrl:
+                    st.subheader("控制")
+                    speed = st.slider("速度", 0.5, 2.0, 1.0, key="playback_speed")
+                    is_auto = st.checkbox("自动播放", True, key="auto_play_mode")
+                
+                if is_auto:
+                    for frame in output_frames:
+                        frame_display.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        time.sleep(1.0 / (fps * speed))
+                else:
+                    selected_idx = st.slider("帧号", 0, len(output_frames) - 1, 0, key="frame_selector")
+                    frame_display.image(cv2.cvtColor(output_frames[selected_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+            
+            # Frame inspection
+            st.header("🔍 逐帧查看")
+            inspect_idx = st.slider("选择帧", 0, len(output_frames) - 1, 0, key="inspect_slider")
+            
+            col_frame, col_status = st.columns([2, 1])
+            with col_frame:
+                st.image(cv2.cvtColor(output_frames[inspect_idx], cv2.COLOR_BGR2RGB), use_container_width=True)
+            with col_status:
+                status = "❌ 头部越界" if head_outside_frames[inspect_idx] else "✅ 头部在圆圈内"
+                st.write(f"**第 {inspect_idx + 1} 帧**\n{status}")
 
 
 if __name__ == "__main__":
